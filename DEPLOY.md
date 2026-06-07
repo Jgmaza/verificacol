@@ -1,5 +1,7 @@
 # Despliegue VerificaCol — Producción
 
+**Repo GitHub:** https://github.com/Jgmaza/verificacol
+
 Arquitectura en producción:
 
 ```
@@ -71,9 +73,21 @@ npx vercel --prod
 
 ---
 
+## Verificar conexión frontend ↔ backend
+
+Tras desplegar ambos:
+
+```bash
+curl https://TU-APP.vercel.app/api/health
+```
+
+Debe devolver `backendStatus: "ok"` y `openaiConfigured: true`.
+
+---
+
 ## Paso 3: MCP de Vercel en Cursor
 
-El archivo `.cursor/mcp.json` ya está configurado:
+El archivo `.cursor/mcp.json` está en `pruebaDani/.cursor/` y también en la raíz del workspace (`Propios/.cursor/`):
 
 ```json
 {

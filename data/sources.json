@@ -1,0 +1,34 @@
+{
+  "candidates": {
+    "ivan-cepeda": {
+      "id": "ivan-cepeda",
+      "name": "Iván Cepeda",
+      "party": "Pacto Histórico",
+      "programTitle": "El Poder de la Verdad",
+      "sources": {
+        "primary": "https://www.presidenteivancepeda.com/programa-de-gobierno",
+        "website": "https://www.presidenteivancepeda.com/",
+        "fallback": "https://caracol.com.co/2026/05/26/programa-de-gobierno-de-ivan-cepeda-propuestas-del-candidato-del-pacto-historico/"
+      }
+    },
+    "abelardo-de-la-espriella": {
+      "id": "abelardo-de-la-espriella",
+      "name": "Abelardo de la Espriella",
+      "party": "Defensores de la Patria",
+      "programTitle": "Patria Milagro — El Milagro de los Nunca",
+      "sources": {
+        "primary": "https://defensoresdelapatria.com/",
+        "pdf": "https://defensoresdelapatria.com/wp-content/uploads/2026/04/PROPUESTAS-DEL-TIGRE.pdf",
+        "fallback": "https://caracol.com.co/2026/05/25/propuestas-de-abelardo-de-la-espriella-plan-de-gobierno-de-candidato-de-defensores-de-la-patria/"
+      }
+    }
+  },
+  "demo": {
+    "oviedo-reel": {
+      "url": "https://www.instagram.com/reel/DY7KQ0gRUOh/",
+      "author": "Juan Daniel Oviedo",
+      "title": "Balance económico del gobierno Petro",
+      "transcriptFile": "transcripcion-reel-DY7KQ0gRUOh.md"
+    }
+  }
+}

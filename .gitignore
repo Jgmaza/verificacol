@@ -1,0 +1,19 @@
+# Frontend
+frontend/.next/
+frontend/node_modules/
+frontend/.env.local
+!frontend/.env.local.example
+
+# Backend
+backend/.venv/
+backend/__pycache__/
+backend/cache/
+backend/tmp/
+
+# General
+.DS_Store
+*.log
+.env
+.env.local
+tmp/
+transcripcion-reel-DY7KQ0gRUOh.md

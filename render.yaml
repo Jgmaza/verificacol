@@ -1,0 +1,19 @@
+# Despliega el backend Python en Render (transcripción gratis, sin créditos OpenAI)
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: verificacol-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: WHISPER_MODEL
+        value: base
+      - key: ALLOWED_ORIGINS
+        sync: false
+        # Pon aquí tu URL de Vercel, ej: https://verificacol.vercel.app

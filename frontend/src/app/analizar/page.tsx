@@ -6,6 +6,7 @@ import { Disclaimer } from "@/components/Disclaimer";
 import { CredibilityMeter } from "@/components/CredibilityMeter";
 import { ClaimCard } from "@/components/ClaimCard";
 import { ChatPanel } from "@/components/ChatPanel";
+import { JobProgressPanel } from "@/components/JobProgressPanel";
 import { DEMO_TRANSCRIPT, DEMO_ANALYSIS } from "@/lib/demo";
 import type { CredibilityAnalysis, TranscriptResult } from "@/lib/types";
 
@@ -18,6 +19,8 @@ function AnalizarContent() {
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState<TranscriptResult | null>(null);
   const [analysis, setAnalysis] = useState<CredibilityAnalysis | null>(null);
+  const [jobMessages, setJobMessages] = useState<string[]>([]);
+  const [jobStatus, setJobStatus] = useState("");
 
   useEffect(() => {
     if (searchParams.get("demo") === "1") {
@@ -31,6 +34,139 @@ function AnalizarContent() {
     setAnalysis(DEMO_ANALYSIS);
     setStep("done");
     setError("");
+    setJobMessages([]);
+    setJobStatus("");
+  }
+
+  async function runAnalysis(result: TranscriptResult) {
+    setTranscript(result);
+    setStep("analyzing");
+    setJobStatus("analyzing");
+    setJobMessages((prev) => [...prev, "Analizando credibilidad con IA..."]);
+
+    const aRes = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: result.transcript,
+        metadata: { url: result.url, author: result.author, title: result.title },
+      }),
+    });
+    const aData = await aRes.json();
+    if (!aRes.ok) throw new Error(aData.error || "Error analizando");
+
+    setAnalysis(aData);
+    setStep("done");
+    setJobStatus("done");
+    setJobMessages((prev) => [...prev, "Análisis completado."]);
+  }
+
+  async function transcribeSync(trimmedUrl: string) {
+    setJobMessages(["Transcribiendo directamente (modo local)..."]);
+    setJobStatus("transcribing");
+
+    const tRes = await fetch("/api/transcribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: trimmedUrl }),
+    });
+    const tData = await tRes.json();
+    if (!tRes.ok) {
+      throw new Error(
+        tData.error ||
+          `Error transcribiendo (HTTP ${tRes.status}). Revisa que el backend esté corriendo: cd backend && ./run.sh`
+      );
+    }
+
+    const result: TranscriptResult = {
+      url: trimmedUrl,
+      title: tData.title,
+      author: tData.author,
+      description: tData.description,
+      duration: tData.duration,
+      transcript: tData.transcript,
+    };
+    await runAnalysis(result);
+  }
+
+  function pollJob(jobId: string, trimmedUrl: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let lastMessageCount = 0;
+      let attempts = 0;
+      const maxAttempts = 120;
+
+      const interval = setInterval(async () => {
+        attempts++;
+        if (attempts > maxAttempts) {
+          clearInterval(interval);
+          reject(new Error("Tiempo de espera agotado (~4 min). Intenta de nuevo."));
+          return;
+        }
+
+        if (attempts === 8) {
+          fetch(`/api/jobs/${jobId}/retry`, { method: "POST" }).catch(() => {});
+        }
+
+        try {
+          const res = await fetch(`/api/jobs/${jobId}`);
+          const job = await res.json();
+          if (!res.ok) {
+            clearInterval(interval);
+            reject(new Error(job.error || "Error consultando job"));
+            return;
+          }
+
+          if (job.status) setJobStatus(job.status);
+
+          const messages: string[] = job.messages || [];
+          if (messages.length > lastMessageCount) {
+            setJobMessages(messages);
+            lastMessageCount = messages.length;
+          }
+
+          if (job.status === "done") {
+            clearInterval(interval);
+            const result: TranscriptResult = {
+              url: job.metadata?.url || trimmedUrl,
+              title: job.metadata?.title,
+              author: job.metadata?.author,
+              description: job.metadata?.description,
+              duration: job.metadata?.duration,
+              transcript: job.transcript,
+            };
+            await runAnalysis(result);
+            resolve();
+          } else if (job.status === "error") {
+            clearInterval(interval);
+            reject(new Error(job.error || "Error en transcripción"));
+          }
+        } catch (e) {
+          clearInterval(interval);
+          reject(e);
+        }
+      }, 2000);
+    });
+  }
+
+  async function transcribeWithJob(trimmedUrl: string): Promise<void> {
+    const res = await fetch("/api/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: trimmedUrl }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      if (res.status === 503) {
+        await transcribeSync(trimmedUrl);
+        return;
+      }
+      throw new Error(data.error || "Error creando job");
+    }
+
+    setJobMessages(["En cola — preparando tu análisis..."]);
+    setJobStatus("queued");
+    await pollJob(data.jobId, trimmedUrl);
   }
 
   async function handleAnalyze() {
@@ -38,51 +174,18 @@ function AnalizarContent() {
     setError("");
     setTranscript(null);
     setAnalysis(null);
+    setJobMessages([]);
+    setJobStatus("");
     setStep("transcribing");
 
     try {
-      const tRes = await fetch("/api/transcribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
-      });
-      const tData = await tRes.json();
-      if (!tRes.ok) {
-        throw new Error(
-          tData.error ||
-            `Error transcribiendo (HTTP ${tRes.status}). Revisa que el backend esté corriendo: cd backend && ./run.sh`
-        );
-      }
-
-      const result: TranscriptResult = {
-        url: url.trim(),
-        title: tData.title,
-        author: tData.author,
-        description: tData.description,
-        duration: tData.duration,
-        transcript: tData.transcript,
-      };
-      setTranscript(result);
-      setStep("analyzing");
-
-      const aRes = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: result.transcript,
-          metadata: { url: result.url, author: result.author, title: result.title },
-        }),
-      });
-      const aData = await aRes.json();
-      if (!aRes.ok) throw new Error(aData.error || "Error analizando");
-
-      setAnalysis(aData);
-      setStep("done");
+      await transcribeWithJob(url.trim());
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error desconocido";
       console.error("[analizar] error:", msg);
       setError(msg);
       setStep("error");
+      setJobStatus("error");
     }
   }
 
@@ -98,6 +201,8 @@ function AnalizarContent() {
         },
       }
     : { type: "transcript" as const, content: "" };
+
+  const isBusy = step === "transcribing" || step === "analyzing";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -119,7 +224,7 @@ function AnalizarContent() {
         />
         <button
           onClick={handleAnalyze}
-          disabled={step === "transcribing" || step === "analyzing"}
+          disabled={isBusy}
           className="rounded-lg bg-blue-700 px-6 py-3 font-medium text-white hover:bg-blue-800 disabled:opacity-50 transition-colors"
         >
           {step === "transcribing"
@@ -130,11 +235,16 @@ function AnalizarContent() {
         </button>
         <button
           onClick={loadDemo}
-          className="rounded-lg border border-blue-200 px-4 py-3 text-sm font-medium text-blue-800 hover:bg-blue-50 transition-colors"
+          disabled={isBusy}
+          className="rounded-lg border border-blue-200 px-4 py-3 text-sm font-medium text-blue-800 hover:bg-blue-50 disabled:opacity-50 transition-colors"
         >
           Cargar demo
         </button>
       </div>
+
+      {isBusy && jobMessages.length > 0 && (
+        <JobProgressPanel messages={jobMessages} status={jobStatus} />
+      )}
 
       {error && (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">

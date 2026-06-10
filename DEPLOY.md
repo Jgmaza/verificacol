@@ -55,6 +55,19 @@ curl https://verificacol-backend.onrender.com/diagnostics
 | `OPENAI_API_KEY` | Tu clave de platform.openai.com |
 | `TRANSCRIPTION_MODE` | `local` |
 | `BACKEND_URL` | `https://verificacol-backend.onrender.com` |
+| `UPSTASH_REDIS_REST_URL` | URL REST de Upstash Redis |
+| `UPSTASH_REDIS_REST_TOKEN` | Token REST de Upstash Redis |
+| `WORKER_SECRET` | Secreto compartido con Render (opcional) |
+
+### Upstash Redis (requerido para transcripción en producción)
+
+Vercel Hobby tiene timeout de ~10s; la transcripción tarda ~50s. Solución: jobs async con Redis.
+
+1. Crea cuenta gratis en [console.upstash.com](https://console.upstash.com)
+2. **New Database** → región cercana (us-east-1)
+3. Copia `UPSTASH_REDIS_REST_URL` y `UPSTASH_REDIS_REST_TOKEN`
+4. Agrégalas en **Vercel** y **Render** (mismas credenciales)
+5. Opcional: genera `WORKER_SECRET` y ponlo en ambos
 
 ### Deploy con CLI
 

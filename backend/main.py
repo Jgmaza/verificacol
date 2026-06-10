@@ -3,10 +3,11 @@ import os
 import sys
 import traceback
 
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from services.jobs import get_job, process_job, save_job
 from services.scraper import list_candidates, scrape_candidate
 from services.transcription import get_diagnostics, transcribe_url
 
@@ -51,6 +52,10 @@ class ScrapeRequest(BaseModel):
     force: bool = False
 
 
+class ProcessJobRequest(BaseModel):
+    job_id: str
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "verificacol-backend"}
@@ -93,3 +98,36 @@ def scrape(req: ScrapeRequest):
     except Exception as e:
         logger.exception("Scrape falló")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/jobs/{job_id}")
+def get_job_status(job_id: str):
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job no encontrado")
+    return job
+
+
+@app.post("/jobs/process")
+def start_job_processing(
+    req: ProcessJobRequest,
+    background_tasks: BackgroundTasks,
+    x_worker_secret: str | None = Header(default=None),
+):
+    secret = os.getenv("WORKER_SECRET")
+    if secret and x_worker_secret != secret:
+        raise HTTPException(status_code=401, detail="No autorizado")
+
+    job = get_job(req.job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job no encontrado")
+
+    if job.get("status") not in ("queued", "error"):
+        return {"status": "already_processing", "job_id": req.job_id}
+
+    job["status"] = "queued"
+    save_job(req.job_id, job)
+
+    background_tasks.add_task(process_job, req.job_id)
+    logger.info("Job %s encolado para procesamiento", req.job_id)
+    return {"status": "accepted", "job_id": req.job_id}

@@ -22,3 +22,5 @@ services:
         value: https://verificacol.vercel.app
       - key: ALLOW_VERCEL_PREVIEWS
         value: "true"
+      # Agregar manualmente en Render Dashboard:
+      # UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, WORKER_SECRET

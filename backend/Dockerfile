@@ -6,12 +6,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-docker.txt .
+RUN pip install --no-cache-dir -r requirements-docker.txt
 
-# Pre-descargar modelo Whisper para evitar espera en el primer request
-ENV WHISPER_MODEL=base
-RUN python -c "import whisper; whisper.load_model('base')"
+# Modelo tiny + int8 cabe en 512MB RAM de Render Starter
+ENV WHISPER_MODEL=tiny
+ENV USE_FASTER_WHISPER=true
+ENV WHISPER_COMPUTE_TYPE=int8
+
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
 
 COPY . .
 

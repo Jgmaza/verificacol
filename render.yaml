@@ -13,7 +13,12 @@ services:
       - key: PORT
         value: 8000
       - key: WHISPER_MODEL
-        value: base
+        value: tiny
+      - key: USE_FASTER_WHISPER
+        value: "true"
+      - key: WHISPER_COMPUTE_TYPE
+        value: int8
       - key: ALLOWED_ORIGINS
-        sync: false
-        # Pon aquí tu URL de Vercel, ej: https://verificacol.vercel.app
+        value: https://verificacol.vercel.app
+      - key: ALLOW_VERCEL_PREVIEWS
+        value: "true"

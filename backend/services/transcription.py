@@ -94,12 +94,27 @@ def _run_cmd(cmd: list, env: dict, timeout: int, step: str) -> subprocess.Comple
 
 def get_diagnostics() -> dict:
     ffmpeg = _find_ffmpeg()
+    use_faster = os.getenv("USE_FASTER_WHISPER", "false").lower() == "true"
     return {
+        "engine": "faster-whisper" if use_faster else "openai-whisper",
+        "whisper_model": os.getenv("WHISPER_MODEL", "base"),
         "yt_dlp": _find_yt_dlp(),
-        "whisper": _find_whisper(),
+        "whisper_cli": _find_whisper() if not use_faster else None,
         "ffmpeg": ffmpeg,
         "ffmpeg_on_path": shutil.which("ffmpeg") is not None,
     }
+
+
+def _transcribe_faster_whisper(audio_file: Path, model: str) -> str:
+    from faster_whisper import WhisperModel
+
+    compute_type = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+    logger.info("[faster-whisper] Cargando modelo %s (%s)", model, compute_type)
+    whisper_model = WhisperModel(model, device="cpu", compute_type=compute_type)
+    segments, info = whisper_model.transcribe(str(audio_file), language="es")
+    logger.info("[faster-whisper] idioma=%s prob=%.2f", info.language, info.language_probability)
+    parts = [segment.text.strip() for segment in segments]
+    return " ".join(p for p in parts if p)
 
 
 def get_video_metadata(url: str) -> dict:
@@ -165,10 +180,14 @@ def _pick_audio_format(url: str, yt_dlp: str, env: dict) -> str:
 
 def transcribe_url(url: str, model: Optional[str] = None) -> dict:
     model = model or os.getenv("WHISPER_MODEL", "base")
-    logger.info("=== Iniciando transcripción: %s (model=%s) ===", url, model)
+    use_faster = os.getenv("USE_FASTER_WHISPER", "false").lower() == "true"
+    logger.info(
+        "=== Iniciando transcripción: %s (model=%s engine=%s) ===",
+        url, model, "faster-whisper" if use_faster else "openai-whisper",
+    )
 
     yt_dlp = _find_yt_dlp()
-    whisper_bin = _find_whisper()
+    whisper_bin = _find_whisper() if not use_faster else None
     env = _prepare_env()
 
     metadata = get_video_metadata(url)
@@ -223,38 +242,42 @@ def transcribe_url(url: str, model: Optional[str] = None) -> dict:
         audio_file = audio_files[0]
         logger.info("Audio descargado: %s (%d bytes)", audio_file.name, audio_file.stat().st_size)
 
-        output_dir = tmp_path / "out"
-        output_dir.mkdir()
+        if use_faster:
+            transcript = _transcribe_faster_whisper(audio_file, model)
+        else:
+            output_dir = tmp_path / "out"
+            output_dir.mkdir()
 
-        whisper_cmd = [
-            whisper_bin,
-            str(audio_file),
-            "--model", model,
-            "--language", "es",
-            "--output_dir", str(output_dir),
-            "--output_format", "txt",
-        ]
+            whisper_cmd = [
+                whisper_bin,
+                str(audio_file),
+                "--model", model,
+                "--language", "es",
+                "--output_dir", str(output_dir),
+                "--output_format", "txt",
+            ]
 
-        transcribe = _run_cmd(
-            whisper_cmd,
-            env=env,
-            timeout=600,
-            step="whisper",
-        )
-        if transcribe.returncode != 0:
-            raise RuntimeError(
-                f"Error transcribiendo (code {transcribe.returncode}): "
-                f"{transcribe.stderr or transcribe.stdout}"
+            transcribe = _run_cmd(
+                whisper_cmd,
+                env=env,
+                timeout=600,
+                step="whisper",
             )
+            if transcribe.returncode != 0:
+                raise RuntimeError(
+                    f"Error transcribiendo (code {transcribe.returncode}): "
+                    f"{transcribe.stderr or transcribe.stdout}"
+                )
 
-        txt_files = list(output_dir.glob("*.txt"))
-        logger.info("Archivos de transcripción: %s", [f.name for f in txt_files])
-        if not txt_files:
-            raise RuntimeError(
-                f"Whisper no generó .txt. Salida whisper: {transcribe.stdout[-500:] if transcribe.stdout else 'vacía'}"
-            )
+            txt_files = list(output_dir.glob("*.txt"))
+            logger.info("Archivos de transcripción: %s", [f.name for f in txt_files])
+            if not txt_files:
+                raise RuntimeError(
+                    f"Whisper no generó .txt. Salida whisper: {transcribe.stdout[-500:] if transcribe.stdout else 'vacía'}"
+                )
 
-        transcript = txt_files[0].read_text(encoding="utf-8").strip()
+            transcript = txt_files[0].read_text(encoding="utf-8").strip()
+
         logger.info("Transcripción OK: %d caracteres", len(transcript))
 
     return {
